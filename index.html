@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HEWA Admin Panel - Advanced</title>
+    
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Supabase JS Library (media messages only) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Firebase Realtime Database -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+    <!-- Chart.js for Summary -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        /* --- ORIGINAL CSS (DO NOT CHANGE) --- */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #0b0b14;
+            color: white;
+            display: flex;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+        }
+
+        .sidebar { width: 100%; min-width: 0; background-color: #1a1a2e; display: flex; flex-direction: column; transition: 0.3s; }
+        .sidebar-header { padding: 20px; background-color: #111; text-align: center; border-bottom: 1px solid rgba(0, 255, 255, 0.3); display: flex; justify-content: space-between; align-items: center;}
+        .sidebar-header h2 { margin: 0; color: cyan; text-shadow: 0 0 10px cyan; }
+        .user-list { flex: 1; overflow-y: auto; padding: 10px; }
+        .user-item { background-color: #202c33; padding: 15px; margin-bottom: 10px; border-radius: 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: 0.3s; border: 1px solid transparent; }
+        .user-item:hover, .user-item.active { background-color: #2a3b47; border-color: cyan; }
+        .user-info { display: flex; flex-direction: column; gap: 5px; }
+        .user-id { font-weight: bold; font-size: 15px; }
+        .last-msg-time { font-size: 11px; color: #aaa; }
+        .unread-badge { background-color: #00e676; color: #000; font-weight: bold; font-size: 13px; padding: 4px 8px; border-radius: 50%; display: none; }
+        .chat-area { flex: 1; min-width: 0; display: none; flex-direction: column; background-color: #000; }
+        .chat-area.chat-open { display: flex; }
+        .back-btn { width: 42px; height: 42px; flex: 0 0 42px; border: 1px solid rgba(0, 255, 255, 0.35); border-radius: 50%; background: rgba(0, 255, 255, 0.08); color: cyan; font-size: 18px; cursor: pointer; transition: background 0.2s, transform 0.2s; }
+        .back-btn:hover { background: rgba(0, 255, 255, 0.18); transform: translateX(-2px); }
+        .chat-header { padding: 20px; background-color: #1f232d; border-bottom: 1px solid cyan; display: flex; align-items: center; gap: 15px; }
+        .chat-header h3 { margin: 0; color: white; }
+        .chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; min-height: 0;}
+        .message { max-width: 70%; padding: 10px 15px; border-radius: 10px; font-size: 15px; line-height: 1.4; }
+        .msg-received { background-color: #202c33; color: #e9edef; align-self: flex-start; border-top-left-radius: 0; }
+        .msg-sent { background-color: #005c4b; color: #e9edef; align-self: flex-end; border-top-right-radius: 0; }
+        .message-meta { display: flex; justify-content: flex-end; align-items: center; gap: 5px; margin-top: 4px; color: rgba(233, 237, 239, 0.68); font-size: 11px; line-height: 1; }
+        .message-status { color: #9ee7dc; font-size: 12px; }
+        .chat-input-area { padding: 15px 20px; background-color: #1f232d; display: flex; gap: 10px; align-items: center; }
+        .chat-input { flex: 1 1 220px; max-width: 420px; min-width: 0; padding: 12px 18px; border-radius: 25px; border: none; outline: none; font-size: 16px; }
+        .media-btn, .send-btn { flex: 0 0 auto; background: transparent; border: none; color: cyan; font-size: 22px; cursor: pointer; }
+        .media-btn:hover, .send-btn:hover { color: #00e676; }
+        .record-btn { flex: 0 0 auto; width: 42px; height: 42px; border: 1px solid rgba(0, 255, 255, 0.3); border-radius: 50%; background: rgba(0, 255, 255, 0.08); color: cyan; font-size: 18px; cursor: pointer; }
+        .record-btn.recording { color: #ff5c5c; border-color: #ff5c5c; animation: pulse 1s infinite; }
+        @keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(255, 92, 92, 0.15); } }
+        .media-preview { display: none; align-items: center; gap: 10px; padding: 10px 16px; background: #171b24; border-top: 1px solid rgba(0, 255, 255, 0.2); }
+        .media-preview.show { display: flex; }
+        .media-preview audio, .media-preview video { max-width: min(280px, 55vw); max-height: 100px; }
+        .media-preview img { max-width: min(180px, 40vw); max-height: 100px; object-fit: contain; }
+        .preview-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ddd; }
+        .preview-action { border: 0; background: transparent; color: cyan; font-size: 18px; cursor: pointer; }
+        .preview-action.delete { color: #ff7777; }
+        .recording-status { display: none; color: #ff7777; font-size: 13px; }
+        .recording-status.show { display: inline; }
+        .no-chat-selected { flex: 1; display: flex; justify-content: center; align-items: center; color: #aaa; font-size: 20px; }
+
+        /* --- NEW CSS FOR ADMIN MENU & FEATURES --- */
+        .menu-btn { font-size: 24px; color: cyan; cursor: pointer; background: none; border: none; padding: 5px; }
+        
+        .side-nav { height: 100%; width: 0; position: fixed; z-index: 1000; top: 0; left: 0; background-color: #111; overflow-x: hidden; transition: 0.3s; padding-top: 60px; border-right: 1px solid cyan; white-space: nowrap; }
+        .side-nav a { padding: 15px 25px; text-decoration: none; font-size: 18px; color: #fff; display: block; transition: 0.2s; border-bottom: 1px solid rgba(255,255,255,0.1); cursor: pointer; }
+        .side-nav a:hover, .side-nav a.active-nav { color: cyan; background-color: #202c33; border-left: 4px solid cyan; }
+        .side-nav .close-btn { position: absolute; top: 10px; right: 20px; font-size: 30px; margin-left: 50px; border-bottom: none; }
+
+        .main-content { flex: 1; display: flex; width: 100%; transition: 0.3s; }
+        .feature-panel { display: none; width: 100%; height: 100%; background-color: #0b0b14; flex-direction: column; overflow-y: auto; padding: 20px; box-sizing: border-box; }
+        .feature-panel.active-panel { display: flex; }
+        
+        .panel-header { font-size: 24px; color: cyan; border-bottom: 1px solid cyan; padding-bottom: 10px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+        .home-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid cyan; border-radius: 8px; background: #1a1a2e; color: cyan; font-size: 14px; cursor: pointer; }
+        .home-btn:hover { background: cyan; color: #000; }
+
+        /* Update Mode Toggle */
+        .toggle-container { display: flex; align-items: center; gap: 15px; font-size: 20px; background: #1a1a2e; padding: 20px; border-radius: 10px; border: 1px solid cyan; margin-bottom: 20px;}
+        .switch { position: relative; display: inline-block; width: 60px; height: 34px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 26px; width: 26px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #ff0000; box-shadow: 0 0 15px #ff0000; }
+        input:checked + .slider:before { transform: translateX(26px); }
+
+        /* Forms & Inputs */
+        .input-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;}
+        .custom-input { padding: 12px; background: #1a1a2e; border: 1px solid cyan; color: white; border-radius: 8px; font-size: 16px; outline: none; flex: 1; min-width: 120px;}
+        .custom-btn { padding: 12px 20px; background: #005c4b; color: white; border: 1px solid cyan; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .custom-btn:hover { background: cyan; color: black; box-shadow: 0 0 10px cyan; }
+
+        /* Data Cards */
+        .card-list { display: flex; flex-direction: column; gap: 10px; }
+        .data-card { background: #1f232d; border: 1px solid rgba(0,255,255,0.3); padding: 15px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .data-card .info { display: flex; flex-direction: column; gap: 5px; }
+        .data-card .time { color: cyan; font-size: 18px; font-weight: bold; }
+        .data-card .delete-btn { color: #ff4d4d; background: none; border: none; font-size: 20px; cursor: pointer; }
+        .live-countdown { color: #00e676; font-family: monospace; font-size: 16px; }
+
+        /* Summary Dashboard */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        .stat-box { background: #1a1a2e; border: 1px solid cyan; padding: 20px; border-radius: 10px; text-align: center; }
+        .stat-box h3 { margin: 0 0 10px 0; font-size: 14px; color: #aaa; }
+        .stat-box p { margin: 0; font-size: 28px; color: cyan; font-weight: bold; text-shadow: 0 0 10px cyan; }
+        .chart-container { background: #1a1a2e; padding: 15px; border-radius: 10px; border: 1px solid rgba(0,255,255,0.3); width: 100%; max-width: 600px; margin: 0 auto;}
+    </style>
+</head>
+<body>
+
+    <!-- Side Navigation Menu -->
+    <div id="sideNav" class="side-nav">
+        <a class="close-btn" onclick="closeNav()">&times;</a>
+        <a id="nav-chat" class="active-nav" onclick="switchPanel('chatPanel', this)"><i class="fa-solid fa-comments"></i> Chat Messages</a>
+        <a id="nav-update" onclick="switchPanel('updatePanel', this)"><i class="fa-solid fa-triangle-exclamation"></i> Update Mode</a>
+        <a id="nav-free" onclick="switchPanel('freeSignalsPanel', this)"><i class="fa-solid fa-plane"></i> Free Signals</a>
+        <a id="nav-premium" onclick="switchPanel('premiumSignalsPanel', this)"><i class="fa-solid fa-gem"></i> Premium Signals</a>
+        <a id="nav-summary" onclick="switchPanel('summaryPanel', this)"><i class="fa-solid fa-chart-pie"></i> Summary</a>
+    </div>
+
+    <!-- MAIN CONTENT WRAPPER -->
+    <div class="main-content">
+        
+        <!-- 1. CHAT PANEL (Original) -->
+        <div id="chatPanel" class="feature-panel active-panel" style="padding: 0; flex-direction: row;">
+            <!-- Sidebar -->
+            <div class="sidebar" id="mainSidebar">
+                <div class="sidebar-header">
+                    <button class="menu-btn" onclick="openNav()"><i class="fa-solid fa-bars"></i></button>
+                    <h2>HEWA Admin</h2>
+                    <div style="width: 24px;"></div> <!-- Spacer for balance -->
+                </div>
+                <div class="user-list" id="userList">
+                    <!-- Users will load here dynamically -->
+                </div>
+            </div>
+
+            <!-- Chat Area -->
+            <div class="chat-area" id="mainChatArea">
+                <div class="no-chat-selected" id="noChatScreen">
+                    <p>Chat එකක් බැලීමට User කෙනෙක් Select කරන්න</p>
+                </div>
+                <div id="activeChatScreen" style="display: none; height: 100%; flex-direction: column;">
+                    <div class="chat-header">
+                        <button class="back-btn" type="button" onclick="backToUsers()"><i class="fa-solid fa-arrow-left"></i></button>
+                        <i class="fa-solid fa-user-circle" style="font-size: 24px; color: cyan;"></i>
+                        <h3 id="currentUserName">User ID</h3>
+                    </div>
+                    <div class="chat-box" id="chatBox"></div>
+                    <div class="media-preview" id="mediaPreview">
+                        <div id="previewContent"></div>
+                        <span class="preview-label" id="previewLabel"></span>
+                        <button class="preview-action" id="sendPreviewBtn" onclick="sendAttachment()"><i class="fa-solid fa-paper-plane"></i></button>
+                        <button class="preview-action delete" onclick="clearAttachment()"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                    <div class="chat-input-area">
+                        <input type="file" id="attachmentInput" accept="image/*,video/*" hidden onchange="previewAttachment(event)">
+                        <button class="media-btn" onclick="document.getElementById('attachmentInput').click()"><i class="fa-solid fa-paperclip"></i></button>
+                        <input type="text" id="adminMsgInput" class="chat-input" placeholder="Type a message..." onkeypress="handleEnter(event)">
+                        <span class="recording-status" id="recordingStatus">● REC</span>
+                        <button class="record-btn" id="recordBtn" onclick="toggleRecording()"><i class="fa-solid fa-microphone"></i></button>
+                        <button class="send-btn" onclick="sendAdminMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. UPDATE MODE PANEL -->
+        <div id="updatePanel" class="feature-panel">
+            <h2 class="panel-header"><i class="fa-solid fa-triangle-exclamation"></i> App Update Mode <button class="home-btn" type="button" onclick="goHome()" title="Home"><i class="fa-solid fa-house"></i> Home</button></h2>
+            <div class="toggle-container">
+                <span>Update Mode (Black Screen)</span>
+                <label class="switch">
+                    <input type="checkbox" id="updateModeToggle" onchange="toggleUpdateMode()">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <p style="color: #aaa;">මෙය ON කළ විට User පද්ධතියට පිවිසෙන සියලු දෙනාටම කළු පැහැති තිරයක් (Black screen) දර්ශනය වේ.</p>
+        </div>
+
+        <!-- 3. AVIATOR FREE SIGNALS PANEL -->
+        <div id="freeSignalsPanel" class="feature-panel">
+            <h2 class="panel-header"><i class="fa-solid fa-plane"></i> Aviator Free Signals <button class="home-btn" type="button" onclick="goHome()" title="Home"><i class="fa-solid fa-house"></i> Home</button></h2>
+            <div class="input-group">
+                <input type="time" id="freeTime" class="custom-input" required>
+                <input type="text" inputmode="text" id="freeOdd" class="custom-input" placeholder="Odd (e.g. 1.50)">
+                <button class="custom-btn" onclick="addSignal('free')">Upload Signal</button>
+            </div>
+            <h3 style="color: cyan; margin-top: 10px;">Pending Free Signals</h3>
+            <div class="card-list" id="freeSignalsList">
+                <!-- Free Signals Load Here -->
+            </div>
+        </div>
+
+        <!-- 4. AVIATOR PREMIUM SIGNALS & KEYS PANEL -->
+        <div id="premiumSignalsPanel" class="feature-panel">
+            <h2 class="panel-header"><i class="fa-solid fa-gem"></i> Premium Signals & Keys <button class="home-btn" type="button" onclick="goHome()" title="Home"><i class="fa-solid fa-house"></i> Home</button></h2>
+            
+            <!-- Add Premium Signal -->
+            <div class="input-group">
+                <input type="time" id="premiumTime" class="custom-input" required>
+                <input type="text" inputmode="text" id="premiumOdd" class="custom-input" placeholder="Odd (e.g. 2.50)">
+                <button class="custom-btn" onclick="addSignal('premium')">Upload Premium Signal</button>
+            </div>
+            
+            <h3 style="color: cyan; margin-top: 10px;">Pending Premium Signals</h3>
+            <div class="card-list" id="premiumSignalsList" style="margin-bottom: 30px;">
+                <!-- Premium Signals Load Here -->
+            </div>
+
+            <hr style="border-color: rgba(0,255,255,0.3); width: 100%; margin-bottom: 20px;">
+
+            <!-- Generate Key -->
+            <h3 style="color: #00e676;"><i class="fa-solid fa-key"></i> Generate Premium Access Key</h3>
+            <div class="input-group">
+                <input type="number" id="keyDays" class="custom-input" placeholder="Active Days (e.g. 30)">
+                <button class="custom-btn" onclick="generateKey()">Generate Key</button>
+            </div>
+            
+            <h3 style="color: #00e676; margin-top: 10px;">Active Keys</h3>
+            <div class="card-list" id="keysList">
+                <!-- Keys Load Here -->
+            </div>
+        </div>
+
+        <!-- 5. SUMMARY PANEL -->
+        <div id="summaryPanel" class="feature-panel">
+            <h2 class="panel-header"><i class="fa-solid fa-chart-pie"></i> System Summary <button class="home-btn" type="button" onclick="goHome()" title="Home"><i class="fa-solid fa-house"></i> Home</button></h2>
+            
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <h3>Just Now (Online)</h3>
+                    <p id="statOnline">0</p>
+                </div>
+                <div class="stat-box">
+                    <h3>Today Visitors</h3>
+                    <p id="statToday">0</p>
+                </div>
+                <div class="stat-box">
+                    <h3>This Month</h3>
+                    <p id="statMonth">0</p>
+                </div>
+                <div class="stat-box">
+                    <h3>Total Visitors</h3>
+                    <p id="statTotal">0</p>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <canvas id="summaryChart"></canvas>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // ==========================================
+        // FIREBASE & SUPABASE INIT (From Original)
+        // ==========================================
+        const supabaseUrl = 'https://oafleivqfgpdyoorkewq.supabase.co';
+        const supabaseKey = 'sb_publishable_GkRCGjmXNcrjJ6Dygn7IXw_UHTcAse4';
+        const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+        const MEDIA_BUCKET = 'chat-media';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyD3wyFqid4veDPV_UHd6-_eAXfQReOSDUI",
+            authDomain: "nishan-88c0b.firebaseapp.com",
+            databaseURL: "https://nishan-88c0b-default-rtdb.firebaseio.com",
+            projectId: "nishan-88c0b",
+            storageBucket: "nishan-88c0b.firebasestorage.app",
+            messagingSenderId: "243629848302",
+            appId: "1:243629848302:web:0bcde70265aa98d07525ff",
+            measurementId: "G-Z6KZR4KT4C"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const firebaseDb = firebase.database();
+
+        // ==========================================
+        // NAVIGATION LOGIC
+        // ==========================================
+        function openNav() { document.getElementById("sideNav").style.width = "250px"; }
+        function closeNav() { document.getElementById("sideNav").style.width = "0"; }
+        
+        function goHome() {
+            switchPanel('chatPanel', document.getElementById('nav-chat'));
+        }
+
+        function switchPanel(panelId, navElement) {
+            // Hide all panels
+            document.querySelectorAll('.feature-panel').forEach(p => p.classList.remove('active-panel'));
+            // Remove active class from all nav items
+            document.querySelectorAll('.side-nav a').forEach(a => a.classList.remove('active-nav'));
+            
+            // Show selected panel and highlight nav
+            document.getElementById(panelId).classList.add('active-panel');
+            navElement.classList.add('active-nav');
+            
+            closeNav();
+        }
+
+        // ==========================================
+        // NEW FEATURES LOGIC (Admin Controls)
+        // ==========================================
+
+        // 1. UPDATE MODE
+        function toggleUpdateMode() {
+            const isChecked = document.getElementById('updateModeToggle').checked;
+            firebaseDb.ref('settings/updateMode').set(isChecked);
+        }
+
+        firebaseDb.ref('settings/updateMode').on('value', snap => {
+            document.getElementById('updateModeToggle').checked = snap.val() || false;
+        });
+
+        // 2. AVIATOR SIGNALS (Free & Premium)
+        function addSignal(type) {
+            const timeInput = document.getElementById(type + 'Time').value;
+            const oddInput = document.getElementById(type + 'Odd').value;
+            
+            if(!timeInput || !oddInput) { alert("Time එක සහ Odd එක ලබා දෙන්න!"); return; }
+
+            const signalId = Date.now().toString();
+            firebaseDb.ref(`signals/${type}/${signalId}`).set({
+                time: timeInput, // HH:MM
+                odd: oddInput,
+                timestamp: Date.now()
+            });
+
+            document.getElementById(type + 'Time').value = '';
+            document.getElementById(type + 'Odd').value = '';
+        }
+
+        function deleteData(path) {
+            firebaseDb.ref(path).remove();
+        }
+
+        // Render Signals
+        function renderSignals(type, snap) {
+            const list = document.getElementById(type + 'SignalsList');
+            list.innerHTML = '';
+            let signals = [];
+            snap.forEach(child => { signals.push({ id: child.key, ...child.val() }); });
+            
+            // Sort by time
+            signals.sort((a,b) => a.time.localeCompare(b.time));
+
+            signals.forEach(sig => {
+                list.innerHTML += `
+                    <div class="data-card">
+                        <div class="info">
+                            <span class="time"><i class="fa-regular fa-clock"></i> ${sig.time}</span>
+                            <span style="color:white;">Odd: ${sig.odd}</span>
+                        </div>
+                        <button class="delete-btn" onclick="deleteData('signals/${type}/${sig.id}')"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                `;
+            });
+        }
+
+        firebaseDb.ref('signals/free').on('value', snap => renderSignals('free', snap));
+        firebaseDb.ref('signals/premium').on('value', snap => renderSignals('premium', snap));
+
+        // Auto-Delete Past Signals (Admin checks every 5 seconds)
+        // DB එකෙන් මකා දමන්නේ මෙතනිනි. ඊළග සිග්නල් එක ආපුවම කලින් එක මැකෙන්න logic එක.
+        setInterval(() => {
+            const now = new Date();
+            const currentHHMM = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+            
+            ['free', 'premium'].forEach(type => {
+                firebaseDb.ref(`signals/${type}`).once('value', snap => {
+                    let signals = [];
+                    snap.forEach(child => { signals.push({ id: child.key, ...child.val() }); });
+                    signals.sort((a,b) => a.time.localeCompare(b.time));
+
+                    // Find if there's a signal whose time is LESS than current time AND there is a newer signal already active
+                    // Or simply: keep the latest passed signal as "Active", delete anything older than that.
+                    let activeFound = false;
+                    for (let i = signals.length - 1; i >= 0; i--) {
+                        if (signals[i].time <= currentHHMM) {
+                            if (!activeFound) {
+                                activeFound = true; // This is the currently showing signal
+                            } else {
+                                // This is an older signal, delete it completely
+                                deleteData(`signals/${type}/${signals[i].id}`);
+                            }
+                        }
+                    }
+                });
+            });
+        }, 5000);
+
+        // 3. PREMIUM KEYS
+        function generateKey() {
+            const days = parseInt(document.getElementById('keyDays').value);
+            if(!days || days < 1) { alert("දවස් ගණන නිවැරදිව ලබාදෙන්න"); return; }
+
+            const key = Math.random().toString(36).substring(2, 8).toUpperCase();
+            const expiryTime = Date.now() + (days * 24 * 60 * 60 * 1000);
+
+            firebaseDb.ref(`premium_keys/${key}`).set({
+                key: key,
+                expiry: expiryTime,
+                created: Date.now()
+            });
+            document.getElementById('keyDays').value = '';
+        }
+
+        let activeKeysData = [];
+        firebaseDb.ref('premium_keys').on('value', snap => {
+            activeKeysData = [];
+            snap.forEach(child => { activeKeysData.push(child.val()); });
+            renderKeys();
+        });
+
+        function renderKeys() {
+            const list = document.getElementById('keysList');
+            list.innerHTML = '';
+            const now = Date.now();
+
+            activeKeysData.forEach(k => {
+                if(now > k.expiry) {
+                    deleteData(`premium_keys/${k.key}`); // Delete expired automatically
+                    return;
+                }
+                list.innerHTML += `
+                    <div class="data-card">
+                        <div class="info">
+                            <span class="time"><i class="fa-solid fa-key"></i> ${k.key}</span>
+                            <span class="live-countdown" id="cd-${k.key}">--:--:--</span>
+                        </div>
+                        <button class="delete-btn" onclick="deleteData('premium_keys/${k.key}')"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                `;
+            });
+        }
+
+        // Live Countdown for keys
+        setInterval(() => {
+            const now = Date.now();
+            activeKeysData.forEach(k => {
+                const el = document.getElementById(`cd-${k.key}`);
+                if(el) {
+                    let diff = k.expiry - now;
+                    if(diff <= 0) { el.innerText = "Expired"; return; }
+                    
+                    let d = Math.floor(diff / (1000 * 60 * 60 * 24));
+                    let h = Math.floor((diff / (1000 * 60 * 60)) % 24);
+                    let m = Math.floor((diff / 1000 / 60) % 60);
+                    let s = Math.floor((diff / 1000) % 60);
+                    
+                    el.innerText = `${d}d ${h.toString().padStart(2,'0')}h ${m.toString().padStart(2,'0')}m ${s.toString().padStart(2,'0')}s left`;
+                }
+            });
+        }, 1000);
+
+        // 4. SUMMARY (ANALYTICS)
+        // Listening to analytics node (Client side needs to write to this node)
+        let chartInstance = null;
+        
+        firebaseDb.ref('analytics').on('value', snap => {
+            const data = snap.val() || {};
+            
+            // Just Now (Online counting based on active connections)
+            const onlineCount = data.online_users ? Object.keys(data.online_users).length : 0;
+            document.getElementById('statOnline').innerText = onlineCount;
+
+            // Date processing
+            const todayStr = new Date().toISOString().split('T')[0];
+            const monthStr = todayStr.substring(0, 7);
+            
+            document.getElementById('statToday').innerText = (data.daily && data.daily[todayStr]) ? data.daily[todayStr] : 0;
+            document.getElementById('statMonth').innerText = (data.monthly && data.monthly[monthStr]) ? data.monthly[monthStr] : 0;
+            document.getElementById('statTotal').innerText = data.total || 0;
+
+            // Update Chart (Last 7 days mock up from daily data)
+            updateChart(data.daily || {});
+        });
+
+        function updateChart(dailyData) {
+            const ctx = document.getElementById('summaryChart').getContext('2d');
+            
+            // Generate last 7 days labels
+            let labels = [];
+            let dataPoints = [];
+            for(let i=6; i>=0; i--) {
+                let d = new Date();
+                d.setDate(d.getDate() - i);
+                let dateStr = d.toISOString().split('T')[0];
+                labels.push(d.toLocaleDateString('si-LK', {weekday: 'short'}));
+                dataPoints.push(dailyData[dateStr] || 0);
+            }
+
+            if(chartInstance) { chartInstance.destroy(); }
+            
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Daily Visitors',
+                        data: dataPoints,
+                        backgroundColor: 'cyan',
+                        borderRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: 'white' } },
+                        x: { grid: { display: false }, ticks: { color: 'white' } }
+                    },
+                    plugins: { legend: { labels: { color: 'white' } } }
+                }
+            });
+        }
+
+
+        // ==========================================
+        // ORIGINAL CHAT LOGIC (UNTOUCHED)
+        // ==========================================
+        const subscribedFirebaseChats = new Set();
+        let usersData = {}; 
+        let activeUserId = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let pendingAttachment = null;
+        let previewObjectUrl = null;
+        const CHAT_CACHE_KEY = 'hewa-admin-chat-cache-v1';
+
+        function saveLocalChatCache() {
+            try {
+                const cache = {};
+                Object.entries(usersData).forEach(([uid, user]) => {
+                    cache[uid] = { unreadCount: user.unreadCount, lastUpdated: user.lastUpdated, messageIds: [...user.messageIds], messages: user.messages.filter(msg => String(msg.type || 'text').toLowerCase() === 'text').slice(-300) };
+                });
+                localStorage.setItem(CHAT_CACHE_KEY, JSON.stringify(cache));
+            } catch (error) {}
+        }
+        function restoreLocalChatCache() {
+            try {
+                const cache = JSON.parse(localStorage.getItem(CHAT_CACHE_KEY) || '{}');
+                Object.entries(cache).forEach(([uid, saved]) => {
+                    if (!saved || typeof saved !== 'object') return;
+                    usersData[uid] = { messages: Array.isArray(saved.messages) ? saved.messages : [], messageIds: new Set(Array.isArray(saved.messageIds) ? saved.messageIds : []), unreadCount: Number(saved.unreadCount) || 0, lastUpdated: Number(saved.lastUpdated) || 0 };
+                });
+            } catch (error) {}
+        }
+        function firebaseUserKey(uid) { return encodeURIComponent(String(uid)).replace(/\./g, '%2E'); }
+        function ensureUser(uid) { if (!usersData[uid]) { usersData[uid] = { messages: [], messageIds: new Set(), unreadCount: 0, lastUpdated: 0 }; } return usersData[uid]; }
+        function processMessage(msg, isRealtime, uniqueId) {
+            const uid = String(msg.userId || ''); if (!uid) return;
+            const user = ensureUser(uid);
+            const id = String(uniqueId || msg.id || `${msg.sender}:${msg.created_at}:${msg.content}`);
+            if (user.messageIds.has(id)) return;
+            user.messageIds.add(id); user.messages.push(msg);
+            const timestamp = new Date(msg.created_at || Date.now()).getTime();
+            if (Number.isFinite(timestamp)) user.lastUpdated = Math.max(user.lastUpdated, timestamp);
+            if (isRealtime) {
+                user.lastUpdated = Math.max(user.lastUpdated, Date.now());
+                if (msg.sender === 'user' && activeUserId !== uid) { user.unreadCount += 1; }
+                if (activeUserId === uid) appendMessageToChat(msg);
+                renderUserList();
+            }
+            saveLocalChatCache();
+        }
+        function subscribeToFirebaseChat(chatKey) {
+            if (subscribedFirebaseChats.has(chatKey)) return; subscribedFirebaseChats.add(chatKey);
+            const messagesRef = firebaseDb.ref(`chats/${chatKey}/messages`);
+            let initialLoad = true;
+            messagesRef.on('value', snapshot => {
+                const isRealtime = !initialLoad;
+                snapshot.forEach(messageSnapshot => {
+                    const msg = messageSnapshot.val() || {};
+                    if (!msg.userId) { try { msg.userId = decodeURIComponent(chatKey.replace(/%2E/g, '.')); } catch (_) { msg.userId = chatKey; } }
+                    processMessage(msg, isRealtime, `firebase:${chatKey}:${messageSnapshot.key}`);
+                });
+                initialLoad = false; if (!activeUserId) renderUserList();
+            });
+        }
+        async function initAdmin() {
+            restoreLocalChatCache(); renderUserList();
+            firebaseDb.ref('chats').on('child_added', snapshot => { subscribeToFirebaseChat(snapshot.key); });
+            const { data: messages } = await _supabase.from('messages').select('*').in('type', ['audio', 'voice', 'video', 'image', 'photo']).order('created_at', { ascending: true });
+            (messages || []).forEach(msg => processMessage(msg, false, `supabase:${msg.id || `${msg.userId}:${msg.created_at}:${msg.content}`}`));
+            renderUserList();
+            _supabase.channel('public:media-messages').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+                const msg = payload.new; if (['audio', 'voice', 'video', 'image', 'photo'].includes(String(msg.type || '').toLowerCase())) { processMessage(msg, true, `supabase:${msg.id || `${msg.userId}:${msg.created_at}:${msg.content}`}`); }
+            }).subscribe();
+        }
+        function renderUserList() {
+            const listContainer = document.getElementById('userList'); listContainer.innerHTML = '';
+            const sortedUsers = Object.keys(usersData).sort((a, b) => usersData[b].lastUpdated - usersData[a].lastUpdated);
+            sortedUsers.forEach(uid => {
+                const user = usersData[uid]; const div = document.createElement('div');
+                div.className = 'user-item' + (activeUserId === uid ? ' active' : ''); div.onclick = () => selectUser(uid);
+                const lastTime = new Date(user.lastUpdated).toLocaleTimeString();
+                div.innerHTML = `<div class="user-info"><span class="user-id">${uid}</span><span class="last-msg-time">Last: ${lastTime}</span></div><div class="unread-badge" style="display: ${user.unreadCount > 0 ? 'block' : 'none'}">${user.unreadCount}</div>`;
+                listContainer.appendChild(div);
+            });
+        }
+        function selectUser(uid) {
+            activeUserId = uid; usersData[uid].unreadCount = 0; saveLocalChatCache();
+            document.getElementById('mainChatArea').classList.add('chat-open');
+            // Handle display inside the Chat Panel specifically
+            if(window.innerWidth <= 600) { document.getElementById('mainSidebar').style.display = 'none'; }
+            document.getElementById('noChatScreen').style.display = 'none';
+            document.getElementById('activeChatScreen').style.display = 'flex';
+            document.getElementById('currentUserName').innerText = uid;
+            renderUserList();
+            const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = '';
+            [...usersData[uid].messages].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)).forEach(msg => appendMessageToChat(msg));
+        }
+        function backToUsers() {
+            activeUserId = null; 
+            document.getElementById('mainChatArea').classList.remove('chat-open');
+            document.getElementById('mainSidebar').style.display = 'flex';
+            document.getElementById('activeChatScreen').style.display = 'none';
+            document.getElementById('noChatScreen').style.display = 'flex';
+            renderUserList();
+        }
+        function appendMessageToChat(msg) {
+            const chatBox = document.getElementById('chatBox'); const msgDiv = document.createElement('div');
+            msgDiv.className = 'message ' + (msg.sender === 'support' ? 'msg-sent' : 'msg-received');
+            const type = String(msg.type || '').toLowerCase(); const content = String(msg.content || '');
+            let media;
+            if (type.includes('audio') || type.includes('voice')) { media = document.createElement('audio'); media.controls = true; } 
+            else if (type.includes('video')) { media = document.createElement('video'); media.controls = true; media.playsInline = true; } 
+            else if (type.includes('image') || type.includes('photo')) { media = document.createElement('img'); media.style.maxWidth = 'min(280px, 65vw)'; media.style.maxHeight = '260px'; media.style.borderRadius = '8px'; }
+            if (media) { media.src = content; msgDiv.appendChild(media); } else { const textContent = document.createElement('div'); textContent.textContent = content; msgDiv.appendChild(textContent); }
+            const messageTime = new Date(msg.created_at || Date.now()); const meta = document.createElement('div'); meta.className = 'message-meta';
+            const time = document.createElement('span'); time.textContent = Number.isNaN(messageTime.getTime()) ? '' : messageTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); meta.appendChild(time);
+            if (msg.sender === 'support') { const status = document.createElement('span'); status.className = 'message-status'; status.textContent = '✓'; meta.appendChild(status); }
+            msgDiv.appendChild(meta); chatBox.appendChild(msgDiv); chatBox.scrollTop = chatBox.scrollHeight;
+        }
+        function previewAttachment(event) { const file = event.target.files && event.target.files[0]; if (!file) return; pendingAttachment = file; showAttachmentPreview(file, file.name); }
+        function showAttachmentPreview(blob, label) {
+            const preview = document.getElementById('mediaPreview'); const content = document.getElementById('previewContent'); content.innerHTML = '';
+            if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = URL.createObjectURL(blob);
+            let element; if (blob.type.startsWith('audio/')) { element = document.createElement('audio'); element.controls = true; } else if (blob.type.startsWith('video/')) { element = document.createElement('video'); element.controls = true; } else { element = document.createElement('img'); }
+            element.src = previewObjectUrl; content.appendChild(element); document.getElementById('previewLabel').textContent = label || 'Voice message'; preview.classList.add('show');
+        }
+        function clearAttachment() { pendingAttachment = null; document.getElementById('attachmentInput').value = ''; document.getElementById('mediaPreview').classList.remove('show'); document.getElementById('previewContent').innerHTML = ''; if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = null; }
+        async function sendAttachment() {
+            if (!pendingAttachment || !activeUserId) return; const attachment = pendingAttachment; const type = attachment.type.startsWith('audio/') ? 'audio' : attachment.type.startsWith('video/') ? 'video' : 'image';
+            document.getElementById('sendPreviewBtn').disabled = true; let uploadedPath = null;
+            try {
+                const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.bin`; uploadedPath = `${firebaseUserKey(activeUserId)}/${fileName}`;
+                await _supabase.storage.from(MEDIA_BUCKET).upload(uploadedPath, attachment, { contentType: attachment.type });
+                const { data: publicUrlData } = _supabase.storage.from(MEDIA_BUCKET).getPublicUrl(uploadedPath);
+                await _supabase.from('messages').insert([{ userId: activeUserId, type, content: publicUrlData.publicUrl, sender: 'support' }]);
+                clearAttachment();
+            } catch (e) { alert('Attachment Failed.'); } finally { document.getElementById('sendPreviewBtn').disabled = false; }
+        }
+        async function toggleRecording() {
+            const button = document.getElementById('recordBtn');
+            if (mediaRecorder && mediaRecorder.state === 'recording') { mediaRecorder.stop(); return; }
+            if (!navigator.mediaDevices) { alert('No mic access'); return; }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream); audioChunks = [];
+                mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+                mediaRecorder.onstop = () => { const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); stream.getTracks().forEach(t => t.stop()); button.classList.remove('recording'); document.getElementById('recordingStatus').classList.remove('show'); pendingAttachment = audioBlob; showAttachmentPreview(audioBlob, 'Voice'); };
+                mediaRecorder.start(); button.classList.add('recording'); document.getElementById('recordingStatus').classList.add('show');
+            } catch (e) { alert('Mic blocked'); }
+        }
+        async function sendAdminMessage() {
+            const input = document.getElementById('adminMsgInput'); const text = input.value.trim(); if (!text || !activeUserId) return;
+            try { await firebaseDb.ref(`chats/${firebaseUserKey(activeUserId)}/messages`).push({ userId: activeUserId, type: 'text', content: text, sender: 'support', created_at: firebase.database.ServerValue.TIMESTAMP }); input.value = ''; } catch (e) {}
+        }
+        function handleEnter(e) { if(e.key === 'Enter') sendAdminMessage(); }
+
+        window.onload = initAdmin;
+    </script>
+</body>
+</html>
