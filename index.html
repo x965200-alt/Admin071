@@ -52,6 +52,18 @@
         .msg-sent { background-color: #005c4b; color: #e9edef; align-self: flex-end; border-top-right-radius: 0; }
         .message-meta { display: flex; justify-content: flex-end; align-items: center; gap: 5px; margin-top: 4px; color: rgba(233, 237, 239, 0.68); font-size: 11px; line-height: 1; }
         .message-status { color: #9ee7dc; font-size: 12px; }
+        .message > img, .message > video, .message > audio { display: block; max-width: 100%; box-sizing: border-box; }
+        .message > img, .message > video { width: auto; max-height: 260px; border-radius: 8px; object-fit: contain; }
+        .message > audio { width: min(280px, 100%); }
+        .voice-player { width: min(300px, 65vw); min-width: 190px; display: flex; align-items: center; gap: 10px; }
+        .voice-play-btn { width: 42px; height: 42px; flex: 0 0 42px; display: grid; place-items: center; border: 0; border-radius: 50%; background: rgba(255,255,255,0.14); color: #e9edef; font-size: 17px; cursor: pointer; }
+        .voice-play-btn:hover { background: rgba(255,255,255,0.24); }
+        .voice-player-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+        .voice-progress { width: 100%; height: 5px; margin: 0; border-radius: 5px; appearance: none; -webkit-appearance: none; cursor: pointer; background: linear-gradient(to right, #9ee7dc 0%, #9ee7dc 0%, rgba(233,237,239,0.35) 0%, rgba(233,237,239,0.35) 100%); }
+        .voice-progress::-webkit-slider-thumb { width: 12px; height: 12px; border-radius: 50%; appearance: none; -webkit-appearance: none; background: #9ee7dc; }
+        .voice-progress::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: #9ee7dc; }
+        .voice-times { display: flex; justify-content: space-between; color: rgba(233,237,239,0.72); font-size: 11px; line-height: 1; }
+        .voice-player audio { display: none; }
         .chat-input-area { padding: 15px 20px; background-color: #1f232d; display: flex; gap: 10px; align-items: center; }
         .chat-input { flex: 1 1 220px; max-width: 420px; min-width: 0; padding: 12px 18px; border-radius: 25px; border: none; outline: none; font-size: 16px; }
         .media-btn, .send-btn { flex: 0 0 auto; background: transparent; border: none; color: cyan; font-size: 22px; cursor: pointer; }
@@ -161,8 +173,7 @@
                     <div class="media-preview" id="mediaPreview">
                         <div id="previewContent"></div>
                         <span class="preview-label" id="previewLabel"></span>
-                        <button class="preview-action" id="sendPreviewBtn" onclick="sendAttachment()"><i class="fa-solid fa-paper-plane"></i></button>
-                        <button class="preview-action delete" onclick="clearAttachment()"><i class="fa-solid fa-trash"></i></button>
+                        <button class="preview-action delete" onclick="clearAttachment()" aria-label="Remove attachment"><i class="fa-solid fa-trash"></i></button>
                     </div>
                     <div class="chat-input-area">
                         <input type="file" id="attachmentInput" accept="image/*,video/*" hidden onchange="previewAttachment(event)">
@@ -170,7 +181,7 @@
                         <input type="text" id="adminMsgInput" class="chat-input" placeholder="Type a message..." onkeypress="handleEnter(event)">
                         <span class="recording-status" id="recordingStatus">● REC</span>
                         <button class="record-btn" id="recordBtn" onclick="toggleRecording()"><i class="fa-solid fa-microphone"></i></button>
-                        <button class="send-btn" onclick="sendAdminMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+                        <button class="send-btn" onclick="sendCurrentMessage()" aria-label="Send message"><i class="fa-solid fa-paper-plane"></i></button>
                     </div>
                 </div>
             </div>
@@ -542,7 +553,8 @@
             try {
                 const cache = {};
                 Object.entries(usersData).forEach(([uid, user]) => {
-                    cache[uid] = { unreadCount: user.unreadCount, lastUpdated: user.lastUpdated, messageIds: [...user.messageIds], messages: user.messages.filter(msg => String(msg.type || 'text').toLowerCase() === 'text').slice(-300) };
+                    const cachedMessages = user.messages.filter(msg => String(msg.type || 'text').toLowerCase() === 'text').slice(-300);
+                    cache[uid] = { unreadCount: user.unreadCount, lastUpdated: user.lastUpdated, messageIds: [...user.messageIds].filter(id => id.startsWith('firebase:')), messages: cachedMessages };
                 });
                 localStorage.setItem(CHAT_CACHE_KEY, JSON.stringify(cache));
             } catch (error) {}
@@ -552,7 +564,7 @@
                 const cache = JSON.parse(localStorage.getItem(CHAT_CACHE_KEY) || '{}');
                 Object.entries(cache).forEach(([uid, saved]) => {
                     if (!saved || typeof saved !== 'object') return;
-                    usersData[uid] = { messages: Array.isArray(saved.messages) ? saved.messages : [], messageIds: new Set(Array.isArray(saved.messageIds) ? saved.messageIds : []), unreadCount: Number(saved.unreadCount) || 0, lastUpdated: Number(saved.lastUpdated) || 0 };
+                    usersData[uid] = { messages: Array.isArray(saved.messages) ? saved.messages : [], messageIds: new Set(Array.isArray(saved.messageIds) ? saved.messageIds.filter(id => String(id).startsWith('firebase:')) : []), unreadCount: Number(saved.unreadCount) || 0, lastUpdated: Number(saved.lastUpdated) || 0 };
                 });
             } catch (error) {}
         }
@@ -634,10 +646,46 @@
             msgDiv.className = 'message ' + (msg.sender === 'support' ? 'msg-sent' : 'msg-received');
             const type = String(msg.type || '').toLowerCase(); const content = String(msg.content || '');
             let media;
-            if (type.includes('audio') || type.includes('voice')) { media = document.createElement('audio'); media.controls = true; } 
-            else if (type.includes('video')) { media = document.createElement('video'); media.controls = true; media.playsInline = true; } 
+            if (type.includes('audio') || type.includes('voice')) {
+                const player = document.createElement('div'); player.className = 'voice-player';
+                media = document.createElement('audio'); media.preload = 'metadata'; media.src = content;
+                const playButton = document.createElement('button'); playButton.type = 'button'; playButton.className = 'voice-play-btn'; playButton.setAttribute('aria-label', 'Play voice message');
+                const playIcon = document.createElement('i'); playIcon.className = 'fa-solid fa-play'; playButton.appendChild(playIcon);
+                const body = document.createElement('div'); body.className = 'voice-player-body';
+                const progress = document.createElement('input'); progress.type = 'range'; progress.className = 'voice-progress'; progress.min = '0'; progress.max = '100'; progress.value = '0'; progress.setAttribute('aria-label', 'Voice message progress');
+                const times = document.createElement('div'); times.className = 'voice-times';
+                const elapsed = document.createElement('span'); elapsed.textContent = '0:00';
+                const duration = document.createElement('span'); duration.textContent = '--:--';
+                times.append(elapsed, duration); body.append(progress, times); player.append(playButton, body, media); msgDiv.appendChild(player);
+
+                const formatTime = seconds => {
+                    if (!Number.isFinite(seconds)) return '--:--';
+                    const mins = Math.floor(seconds / 60);
+                    const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+                    return `${mins}:${secs}`;
+                };
+                const updateProgress = () => {
+                    const percent = media.duration ? (media.currentTime / media.duration) * 100 : 0;
+                    progress.value = String(percent);
+                    progress.style.background = `linear-gradient(to right, #9ee7dc ${percent}%, rgba(233,237,239,0.35) ${percent}%)`;
+                    elapsed.textContent = formatTime(media.currentTime);
+                };
+                playButton.onclick = async () => {
+                    if (media.paused) {
+                        document.querySelectorAll('.voice-player audio').forEach(other => { if (other !== media) other.pause(); });
+                        try { await media.play(); } catch (_) {}
+                    } else media.pause();
+                };
+                media.addEventListener('play', () => { playIcon.className = 'fa-solid fa-pause'; playButton.setAttribute('aria-label', 'Pause voice message'); });
+                media.addEventListener('pause', () => { playIcon.className = 'fa-solid fa-play'; playButton.setAttribute('aria-label', 'Play voice message'); });
+                media.addEventListener('ended', () => { media.currentTime = 0; updateProgress(); });
+                media.addEventListener('loadedmetadata', () => { duration.textContent = formatTime(media.duration); });
+                media.addEventListener('timeupdate', updateProgress);
+                progress.addEventListener('input', () => { if (media.duration) media.currentTime = (Number(progress.value) / 100) * media.duration; });
+            } else if (type.includes('video')) { media = document.createElement('video'); media.controls = true; media.playsInline = true; }
             else if (type.includes('image') || type.includes('photo')) { media = document.createElement('img'); media.style.maxWidth = 'min(280px, 65vw)'; media.style.maxHeight = '260px'; media.style.borderRadius = '8px'; }
-            if (media) { media.src = content; msgDiv.appendChild(media); } else { const textContent = document.createElement('div'); textContent.textContent = content; msgDiv.appendChild(textContent); }
+            if (media && !type.includes('audio') && !type.includes('voice')) { media.src = content; msgDiv.appendChild(media); }
+            else if (!media) { const textContent = document.createElement('div'); textContent.textContent = content; msgDiv.appendChild(textContent); }
             const messageTime = new Date(msg.created_at || Date.now()); const meta = document.createElement('div'); meta.className = 'message-meta';
             const time = document.createElement('span'); time.textContent = Number.isNaN(messageTime.getTime()) ? '' : messageTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); meta.appendChild(time);
             if (msg.sender === 'support') { const status = document.createElement('span'); status.className = 'message-status'; status.textContent = '✓'; meta.appendChild(status); }
@@ -651,16 +699,27 @@
             element.src = previewObjectUrl; content.appendChild(element); document.getElementById('previewLabel').textContent = label || 'Voice message'; preview.classList.add('show');
         }
         function clearAttachment() { pendingAttachment = null; document.getElementById('attachmentInput').value = ''; document.getElementById('mediaPreview').classList.remove('show'); document.getElementById('previewContent').innerHTML = ''; if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = null; }
+        async function sendCurrentMessage() {
+            if (pendingAttachment) { await sendAttachment(); return; }
+            await sendAdminMessage();
+        }
         async function sendAttachment() {
-            if (!pendingAttachment || !activeUserId) return; const attachment = pendingAttachment; const type = attachment.type.startsWith('audio/') ? 'audio' : attachment.type.startsWith('video/') ? 'video' : 'image';
-            document.getElementById('sendPreviewBtn').disabled = true; let uploadedPath = null;
+            if (!pendingAttachment || !activeUserId) return;
+            const attachment = pendingAttachment;
+            const type = attachment.type.startsWith('audio/') ? 'audio' : attachment.type.startsWith('video/') ? 'video' : 'image';
+            const sendButton = document.querySelector('.send-btn');
+            sendButton.disabled = true;
             try {
-                const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.bin`; uploadedPath = `${firebaseUserKey(activeUserId)}/${fileName}`;
-                await _supabase.storage.from(MEDIA_BUCKET).upload(uploadedPath, attachment, { contentType: attachment.type });
+                const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.bin`;
+                const uploadedPath = `${firebaseUserKey(activeUserId)}/${fileName}`;
+                const { error: uploadError } = await _supabase.storage.from(MEDIA_BUCKET).upload(uploadedPath, attachment, { contentType: attachment.type });
+                if (uploadError) throw uploadError;
                 const { data: publicUrlData } = _supabase.storage.from(MEDIA_BUCKET).getPublicUrl(uploadedPath);
-                await _supabase.from('messages').insert([{ userId: activeUserId, type, content: publicUrlData.publicUrl, sender: 'support' }]);
+                const { error: messageError } = await _supabase.from('messages').insert([{ userId: activeUserId, type, content: publicUrlData.publicUrl, sender: 'support' }]);
+                if (messageError) throw messageError;
                 clearAttachment();
-            } catch (e) { alert('Attachment Failed.'); } finally { document.getElementById('sendPreviewBtn').disabled = false; }
+            } catch (e) { alert('Attachment Failed.'); }
+            finally { sendButton.disabled = false; }
         }
         async function toggleRecording() {
             const button = document.getElementById('recordBtn');
